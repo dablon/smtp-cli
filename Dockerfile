@@ -3,17 +3,15 @@ FROM golang:1.21-alpine AS builder
 
 WORKDIR /build
 
-# Copy go mod files
+# Copy go mod files first
 COPY go.mod ./
-
-# Download dependencies
 RUN go mod download
 
 # Copy all source
 COPY . .
 
-# Build
-RUN CGO_ENABLED=0 GOOS=linux go build -o smtp-cli -ldflags="-s -w" ./cmd/smtp-cli
+# Build - the module is at root, so build from there
+RUN CGO_ENABLED=0 GOOS=linux go build -o smtp-cli ./cmd/smtp-cli
 
 # Final stage
 FROM alpine:latest
