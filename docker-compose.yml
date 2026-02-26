@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  smtp-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smtp-cli
+    volumes:
+      - ./:/app
+    working_dir: /app
+    environment:
+      - SMTP_HOST=smtp-server
+      - SMTP_PORT=5870
+      - SMTP_USER=elus54
+      - SMTP_PASS=nWvnh93M8nZj8X7kr6Hm6pbm5vN1Rl
+    depends_on:
+      - smtp
+    command: ["tail", "-f", "/dev/null"]
+
+  smtp:
+    build:
+      context: ../smtpServer
+      dockerfile: ../smtpServer/Dockerfile
+    container_name: smtp-server-test
+    hostname: smtp.maleon.run
+    domainname: maleon.run
+    ports:
+      - "2525:25"
+      - "5870:587"
+      - "4650:465"
+    environment:
+      - SMTP_USERS=elus54:${SMTP_PASSWORD:-nWvnh93M8nZj8X7kr6Hm6pbm5vN1Rl}
+    env_file:
+      - ../smtpServer/.env
