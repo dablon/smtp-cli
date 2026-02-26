@@ -1,8 +1,0 @@
-.dockerignore
-.git
-.gitignore
-.github
-*.md
-Makefile
-docker-compose*
-.env*

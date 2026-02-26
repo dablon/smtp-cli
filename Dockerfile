@@ -3,7 +3,7 @@ FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-# Copy all source at once
+# Copy all source
 COPY . .
 
 # Build
