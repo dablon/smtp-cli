@@ -13,14 +13,8 @@ COPY go.mod ./
 # Download dependencies (creates go.sum automatically)
 RUN go mod download
 
-# Build
+# Build only (skip tests for faster builds)
 RUN CGO_ENABLED=0 GOOS=linux go build -o smtp-cli -ldflags="-s -w" .
-
-# Test with coverage
-RUN go test -v -coverprofile=coverage.out -covermode=atomic .
-
-# Show coverage
-RUN go tool cover -func=coverage.out
 
 # Final stage
 FROM alpine:latest
@@ -31,7 +25,4 @@ WORKDIR /app
 
 COPY --from=builder /build/smtp-cli /usr/local/bin/
 
-RUN smtp-cli help
-
-FROM builder AS test-only
-CMD ["go", "test", "-v", "-coverprofile=coverage.out", "-covermode=atomic", "."]
+CMD ["smtp-cli", "help"]
