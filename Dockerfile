@@ -3,18 +3,19 @@ FROM golang:1.21-alpine AS builder
 
 WORKDIR /build
 
-# Install dependencies
-RUN apk add --no-cache git
-
-# Copy source
-COPY *.go ./
+# Copy go mod files
 COPY go.mod ./
 
-# Download dependencies (creates go.sum automatically)
+# Download dependencies
 RUN go mod download
 
-# Build only (skip tests for faster builds)
-RUN CGO_ENABLED=0 GOOS=linux go build -o smtp-cli -ldflags="-s -w" .
+# Copy source
+COPY cmd/ ./cmd/
+COPY pkg/ ./pkg/
+COPY internal/ ./internal/
+
+# Build
+RUN CGO_ENABLED=0 GOOS=linux go build -o smtp-cli -ldflags="-s -w" ./cmd/smtp-cli
 
 # Final stage
 FROM alpine:latest
