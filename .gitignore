@@ -1,0 +1,31 @@
+# Binaries
+smtp-cli
+smtp-cli.exe
+smtp-cli-linux
+smtp-cli-macos
+
+# Coverage
+coverage.out
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+/dist/
+/build/
+
+# Dependencies
+/vendor/
+
+# Environment
+.env
+.env.local
+*.env
