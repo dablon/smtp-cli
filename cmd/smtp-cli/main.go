@@ -10,6 +10,9 @@ import (
 )
 
 func main() {
+	// Debug: print all args
+	fmt.Println("DEBUG args:", os.Args)
+
 	// Define flags
 	host := flag.String("host", "smtp.maleon.run", "SMTP server host")
 	port := flag.Int("port", 5870, "SMTP server port")
