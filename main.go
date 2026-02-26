@@ -7,7 +7,6 @@ import (
 	"os"
 	"flag"
 	"bytes"
-	"io"
 )
 
 // Email represents an email message
