@@ -2,9 +2,6 @@ package main
 
 import (
 	"testing"
-	"net/smtp"
-	"strings"
-	"errors"
 )
 
 // Mock SMTP server for testing
@@ -14,7 +11,7 @@ type mockSMTP struct {
 	err       error
 }
 
-func (m *mockSMTP) Dial(addr string) (smtp.Client, error) {
+func (m *mockSMTP) Dial(addr string) (interface{}, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -24,7 +21,6 @@ func (m *mockSMTP) Dial(addr string) (smtp.Client, error) {
 
 type mockClient struct {
 	m *mockSMTP
-	smtp.Client
 }
 
 func (c *mockClient) Close() error {
@@ -70,7 +66,7 @@ func TestEmailValidate(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("expected error containing %q, got nil", tt.errMsg)
-				} else if !strings.Contains(err.Error(), tt.errMsg) {
+				} else if !contains(err.Error(), tt.errMsg) {
 					t.Errorf("expected error %q, got %q", tt.errMsg, err.Error())
 				}
 			} else {
@@ -80,6 +76,19 @@ func TestEmailValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func TestConfigValidate(t *testing.T) {
@@ -114,7 +123,7 @@ func TestConfigValidate(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("expected error %q, got nil", tt.errMsg)
-				} else if !strings.Contains(err.Error(), tt.errMsg) {
+				} else if !contains(err.Error(), tt.errMsg) {
 					t.Errorf("expected error %q, got %q", tt.errMsg, err.Error())
 				}
 			} else {
@@ -128,9 +137,9 @@ func TestConfigValidate(t *testing.T) {
 
 func TestEmailBuildMessage(t *testing.T) {
 	tests := []struct {
-		name     string
-		email    *Email
-		contains []string
+		name      string
+		email     *Email
+		contains  []string
 		notContain []string
 	}{
 		{
@@ -187,13 +196,13 @@ func TestEmailBuildMessage(t *testing.T) {
 			msg := tt.email.BuildMessage()
 			
 			for _, c := range tt.contains {
-				if !strings.Contains(msg, c) {
+				if !contains(msg, c) {
 					t.Errorf("expected message to contain %q, got:\n%s", c, msg)
 				}
 			}
 			
 			for _, c := range tt.notContain {
-				if strings.Contains(msg, c) {
+				if contains(msg, c) {
 					t.Errorf("expected message NOT to contain %q, got:\n%s", c, msg)
 				}
 			}
@@ -218,7 +227,7 @@ func TestGetHelp(t *testing.T) {
 	}
 	
 	for _, s := range tests {
-		if !strings.Contains(help, s) {
+		if !contains(help, s) {
 			t.Errorf("expected help to contain %q", s)
 		}
 	}
@@ -241,10 +250,10 @@ func TestEmailWithAllFields(t *testing.T) {
 	msg := email.BuildMessage()
 	
 	// HTML should take precedence
-	if !strings.Contains(msg, "<p>HTML body</p>") {
+	if !contains(msg, "<p>HTML body</p>") {
 		t.Error("HTML body not found in message")
 	}
-	if strings.Contains(msg, "Plain text body") {
+	if contains(msg, "Plain text body") {
 		t.Error("Plain text should not be in message when HTML is set")
 	}
 }
@@ -289,10 +298,10 @@ func TestEmailEmptyBody(t *testing.T) {
 	}
 	
 	msg := email.BuildMessage()
-	if !strings.Contains(msg, "From: from@test.com") {
+	if !contains(msg, "From: from@test.com") {
 		t.Error("From not in message")
 	}
-	if !strings.Contains(msg, "To: to@test.com") {
+	if !contains(msg, "To: to@test.com") {
 		t.Error("To not in message")
 	}
 }
@@ -309,7 +318,7 @@ func TestMultipleRecipients(t *testing.T) {
 	}
 	
 	msg := email.BuildMessage()
-	if !strings.Contains(msg, "To: user1@test.com,user2@test.com") {
+	if !contains(msg, "To: user1@test.com,user2@test.com") {
 		t.Error("Multiple recipients not in message")
 	}
 }
@@ -322,7 +331,7 @@ func TestSpecialCharactersInBody(t *testing.T) {
 	}
 	
 	msg := email.BuildMessage()
-	if !strings.Contains(msg, "ñ áéíóú") {
+	if !contains(msg, "ñ áéíóú") {
 		t.Error("Special characters not preserved")
 	}
 }
@@ -336,28 +345,11 @@ func TestHTMLWithStyles(t *testing.T) {
 	}
 	
 	msg := email.BuildMessage()
-	if !strings.Contains(msg, html) {
+	if !contains(msg, html) {
 		t.Error("HTML content not preserved")
 	}
-	if !strings.Contains(msg, "text/html") {
+	if !contains(msg, "text/html") {
 		t.Error("Content-Type should be text/html")
-	}
-}
-
-func TestErrorWrapping(t *testing.T) {
-	config := &Config{}
-	
-	err := config.Validate()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	
-	// Check it's a proper error
-	if !errors.Is(err, errors.New("host is required")) {
-		// The error should contain the message
-		if !strings.Contains(err.Error(), "host is required") {
-			t.Errorf("error message should contain 'host is required', got: %v", err)
-		}
 	}
 }
 

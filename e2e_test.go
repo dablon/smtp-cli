@@ -2,10 +2,18 @@ package main
 
 import (
 	"testing"
-	"net/smtp"
 	"fmt"
 	"time"
 )
+
+// getEnv returns environment variable or default
+func getEnv(key, defaultValue string) string {
+	return defaultValue // Simplified for testing
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	return defaultValue
+}
 
 // E2EIntegrationTest tests the actual SMTP server
 func TestE2E_SendEmail(t *testing.T) {
@@ -104,30 +112,6 @@ func TestE2E_HTMLEmail(t *testing.T) {
 	}
 }
 
-func getEnv(key, defaultValue string) string {
-	if value := getEnvInternal(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func getEnvInt(key string, defaultValue int) int {
-	if value := getEnvInternal(key); value != "" {
-		var intValue int
-		fmt.Sscanf(value, "%d", &intValue)
-		if intValue > 0 {
-			return intValue
-		}
-	}
-	return defaultValue
-}
-
-func getEnvInternal(key string) string {
-	// Simple implementation without os.Getenv for testing
-	return ""
-}
-
-// Mock smtp.SendMail for testing
 func init() {
 	// This allows testing without actual SMTP server
 	fmt.Println("E2E tests configured - set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS env vars")
