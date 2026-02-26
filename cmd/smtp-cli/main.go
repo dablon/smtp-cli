@@ -26,10 +26,16 @@ func main() {
 
 	flag.Parse()
 
+	// Skip first arg (program name) if it's the binary name
 	args := flag.Args()
-	if len(args) == 0 {
-		fmt.Println(getHelp())
-		os.Exit(1)
+	if len(args) == 0 || args[0] == "smtp-cli" {
+		if len(args) > 0 {
+			args = args[1:]
+		}
+		if len(args) == 0 {
+			fmt.Println(getHelp())
+			os.Exit(1)
+		}
 	}
 
 	config := &smtp.Config{
