@@ -114,6 +114,11 @@ func (c *Config) SendWithAuth(e *Email) error {
 	addr := fmt.Sprintf("%s:%d", c.Host, c.Port)
 	msg := e.BuildMessage()
 	
+	// If no username/password, try without auth
+	if c.Username == "" || c.Password == "" {
+		return c.Send(e)
+	}
+	
 	auth := smtp.PlainAuth("", c.Username, c.Password, c.Host)
 	
 	// Connect without TLS first
