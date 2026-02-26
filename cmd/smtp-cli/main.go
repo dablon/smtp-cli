@@ -10,25 +10,46 @@ import (
 )
 
 func main() {
-	// Debug: print all args
-	fmt.Println("DEBUG args:", os.Args)
-
-	// Define flags
-	host := flag.String("host", "smtp.maleon.run", "SMTP server host")
-	port := flag.Int("port", 5870, "SMTP server port")
-	user := flag.String("user", "elus54", "SMTP username")
-	pass := flag.String("pass", "", "SMTP password")
-	from := flag.String("from", "noreply@maleon.run", "From address")
-	to := flag.String("to", "", "To address")
-	subject := flag.String("subject", "", "Email subject")
-	body := flag.String("body", "", "Email body (plain text)")
-	html := flag.String("html", "", "Email body (HTML)")
-
-	flag.Parse()
-
-	args := flag.Args()
-	if len(args) == 0 {
+	if len(os.Args) < 2 {
 		fmt.Println(getHelp())
+		os.Exit(1)
+	}
+
+	command := os.Args[1]
+
+	switch command {
+	case "send":
+		handleSend(os.Args[2:])
+	case "test":
+		handleTest(os.Args[2:])
+	case "help", "--help", "-h":
+		fmt.Println(getHelp())
+	default:
+		fmt.Printf("Unknown command: %s\n", command)
+		fmt.Println(getHelp())
+		os.Exit(1)
+	}
+}
+
+func handleSend(args []string) {
+	// Create a new FlagSet for the send command
+	sendCmd := flag.NewFlagSet("send", flag.ExitOnError)
+
+	host := sendCmd.String("host", "smtp.maleon.run", "SMTP server host")
+	port := sendCmd.Int("port", 5870, "SMTP server port")
+	user := sendCmd.String("user", "elus54", "SMTP username")
+	pass := sendCmd.String("pass", "", "SMTP password")
+	from := sendCmd.String("from", "noreply@maleon.run", "From address")
+	to := sendCmd.String("to", "", "To address")
+	subject := sendCmd.String("subject", "", "Email subject")
+	body := sendCmd.String("body", "", "Email body (plain text)")
+	html := sendCmd.String("html", "", "Email body (HTML)")
+
+	sendCmd.Parse(args)
+
+	if *to == "" {
+		fmt.Println("Error: --to is required")
+		sendCmd.Usage()
 		os.Exit(1)
 	}
 
@@ -39,51 +60,53 @@ func main() {
 		Password: *pass,
 	}
 
-	switch args[0] {
-	case "send":
-		if *to == "" {
-			fmt.Println("Error: --to is required")
-			os.Exit(1)
-		}
+	e := &email.Email{
+		From:    *from,
+		To:      *to,
+		Subject: *subject,
+		Body:    *body,
+		HTML:    *html,
+	}
 
-		e := &email.Email{
-			From:    *from,
-			To:      *to,
-			Subject: *subject,
-			Body:    *body,
-			HTML:    *html,
-		}
+	var err error
+	if *user != "" && *pass != "" {
+		err = config.SendWithAuth(e.From, e.To, e.BuildMessage())
+	} else {
+		err = config.Send(e.BuildMessage())
+	}
 
-		var err error
-		if *user != "" && *pass != "" {
-			err = config.SendWithAuth(e.From, e.To, e.BuildMessage())
-		} else {
-			err = config.Send(e.BuildMessage())
-		}
-
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
-
-		fmt.Println("Email sent successfully!")
-
-	case "test":
-		err := config.TestConnection()
-		if err != nil {
-			fmt.Printf("Connection test failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Connection successful!")
-
-	case "help", "--help", "-h":
-		fmt.Println(getHelp())
-
-	default:
-		fmt.Printf("Unknown command: %s\n", args[0])
-		fmt.Println(getHelp())
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
+
+	fmt.Println("Email sent successfully!")
+}
+
+func handleTest(args []string) {
+	// Create a new FlagSet for the test command
+	testCmd := flag.NewFlagSet("test", flag.ExitOnError)
+
+	host := testCmd.String("host", "smtp.maleon.run", "SMTP server host")
+	port := testCmd.Int("port", 5870, "SMTP server port")
+	user := testCmd.String("user", "elus54", "SMTP username")
+	pass := testCmd.String("pass", "", "SMTP password")
+
+	testCmd.Parse(args)
+
+	config := &smtp.Config{
+		Host:     *host,
+		Port:     *port,
+		Username: *user,
+		Password: *pass,
+	}
+
+	err := config.TestConnection()
+	if err != nil {
+		fmt.Printf("Connection test failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Connection successful!")
 }
 
 func getHelp() string {
