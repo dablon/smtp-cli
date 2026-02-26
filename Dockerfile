@@ -14,8 +14,6 @@ FROM alpine:latest
 
 RUN apk add --no-cache ca-certificates mailx
 
-WORKDIR /app
-
 COPY --from=builder /app/smtp-cli /usr/local/bin/smtp-cli
 
-# No default CMD - user must specify command
+ENTRYPOINT ["smtp-cli"]
