@@ -16,6 +16,6 @@ RUN apk add --no-cache ca-certificates mailx
 
 WORKDIR /app
 
-COPY --from=builder /app/smtp-cli /usr/local/bin/
+COPY --from=builder /app/smtp-cli /usr/local/bin/smtp-cli
 
-CMD ["smtp-cli", "help"]
+# No default CMD - user must specify command
