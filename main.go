@@ -116,39 +116,39 @@ func (c *Config) SendWithAuth(e *Email) error {
 	
 	auth := smtp.PlainAuth("", c.Username, c.Password, c.Host)
 	
-	// Use TLS for secure connection
-	tlsConfig := &tls.Config{
-		ServerName: c.Host,
-		InsecureSkipVerify: true, // For self-signed certs
-	}
-	
-	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	// Connect without TLS first
+	conn, err := smtp.Dial(addr)
 	if err != nil {
-		return fmt.Errorf("failed to connect via TLS: %w", err)
+		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer conn.Close()
 	
-	client, err := smtp.NewClient(conn, c.Host)
-	if err != nil {
-		return fmt.Errorf("failed to create SMTP client: %w", err)
+	// Upgrade to TLS if needed (STARTTLS)
+	if ok, _ := conn.Extension("STARTTLS"); ok {
+		tlsConfig := &tls.Config{
+			ServerName: c.Host,
+			InsecureSkipVerify: true,
+		}
+		if err := conn.StartTLS(tlsConfig); err != nil {
+			return fmt.Errorf("failed to start TLS: %w", err)
+		}
 	}
-	defer client.Close()
 	
 	// Authenticate
-	if err := client.Auth(auth); err != nil {
+	if err := conn.Auth(auth); err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 	
 	// Set From and To
-	if err := client.Mail(e.From); err != nil {
+	if err := conn.Mail(e.From); err != nil {
 		return fmt.Errorf("failed to set From: %w", err)
 	}
-	if err := client.Rcpt(e.To); err != nil {
+	if err := conn.Rcpt(e.To); err != nil {
 		return fmt.Errorf("failed to set To: %w", err)
 	}
 	
 	// Send body
-	w, err := client.Data()
+	w, err := conn.Data()
 	if err != nil {
 		return fmt.Errorf("failed to get data writer: %w", err)
 	}
