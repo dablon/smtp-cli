@@ -7,10 +7,10 @@ WORKDIR /build
 RUN apk add --no-cache git
 
 # Copy source
-COPY go.mod go.sum ./
 COPY *.go ./
+COPY go.mod ./
 
-# Download dependencies
+# Download dependencies (creates go.sum automatically)
 RUN go mod download
 
 # Build
@@ -30,7 +30,6 @@ RUN apk add --no-cache ca-certificates mailx
 WORKDIR /app
 
 COPY --from=builder /build/smtp-cli /usr/local/bin/
-COPY --from=builder /build/coverage.out /app/
 
 RUN smtp-cli help
 
