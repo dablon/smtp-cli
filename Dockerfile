@@ -9,10 +9,8 @@ COPY go.mod ./
 # Download dependencies
 RUN go mod download
 
-# Copy source
-COPY cmd/ ./cmd/
-COPY pkg/ ./pkg/
-COPY internal/ ./internal/
+# Copy all source
+COPY . .
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build -o smtp-cli -ldflags="-s -w" ./cmd/smtp-cli
