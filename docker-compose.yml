@@ -8,16 +8,7 @@ services:
     environment:
       - SMTP_HOST=localhost
       - SMTP_PORT=2525
-    depends_on:
-      - smtp
-
-  smtp:
-    image: b4d33e4/postfix:latest
-    container_name: smtp-server
-    hostname: smtp.maleon.run
-    ports:
-      - "2525:25"
-      - "5870:587"
-      - "4650:465"
-    environment:
-      - SMTP_USERS=elus54:nWvnh93M8nZj8X7kr6Hm6pbm5vN1Rl
+    volumes:
+      - ./:/app
+    working_dir: /app
+    command: ["smtp-cli", "help"]
