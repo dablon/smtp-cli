@@ -2,9 +2,7 @@ package email
 
 import (
 	"fmt"
-	"net/smtp"
 	"strings"
-	"crypto/tls"
 )
 
 // Email represents an email message
