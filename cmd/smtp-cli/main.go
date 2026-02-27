@@ -72,7 +72,7 @@ func handleSend(args []string) {
 	if *user != "" && *pass != "" {
 		err = config.SendWithAuth(e.From, e.To, e.BuildMessage())
 	} else {
-		err = config.Send(e.BuildMessage())
+		err = config.Send(e.To, e.BuildMessage())
 	}
 
 	if err != nil {
@@ -101,7 +101,7 @@ func handleTest(args []string) {
 		Password: *pass,
 	}
 
-	err := config.TestConnection()
+	err := config.Validate()
 	if err != nil {
 		fmt.Printf("Connection test failed: %v\n", err)
 		os.Exit(1)
