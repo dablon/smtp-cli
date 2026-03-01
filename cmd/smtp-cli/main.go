@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/user"
+	"strings"
 
 	"smtp-cli/internal/smtp"
 	"smtp-cli/pkg/email"
@@ -19,44 +22,31 @@ type Profile struct {
 	Pass     string `json:"pass"`
 	From     string `json:"from"`
 	TLS      bool   `json:"tls"`
+	APIURL   string `json:"api_url"`
 }
 
 type Profiles map[string]Profile
 
 func getConfigDir() string {
 	usr, _ := user.Current()
-	homeDir := usr.HomeDir
-	return homeDir + "/.smtp-cli"
+	return usr.HomeDir + "/.smtp-cli"
 }
 
 func loadProfiles() Profiles {
-	configDir := getConfigDir()
-	configFile := configDir + "/profiles.json"
-	
+	configFile := getConfigDir() + "/profiles.json"
 	data, err := os.ReadFile(configFile)
 	if err != nil {
 		return make(Profiles)
 	}
-	
 	var profiles Profiles
-	if err := json.Unmarshal(data, &profiles); err != nil {
-		return make(Profiles)
-	}
+	json.Unmarshal(data, &profiles)
 	return profiles
 }
 
 func saveProfiles(profiles Profiles) error {
-	configDir := getConfigDir()
-	if err := os.MkdirAll(configDir, 0700); err != nil {
-		return err
-	}
-	
-	data, err := json.MarshalIndent(profiles, "", "  ")
-	if err != nil {
-		return err
-	}
-	
-	return os.WriteFile(configDir+"/profiles.json", data, 0600)
+	os.MkdirAll(getConfigDir(), 0700)
+	data, _ := json.MarshalIndent(profiles, "", "  ")
+	return os.WriteFile(getConfigDir()+"/profiles.json", data, 0600)
 }
 
 func main() {
@@ -64,9 +54,7 @@ func main() {
 		fmt.Println(getHelp())
 		os.Exit(1)
 	}
-
 	command := os.Args[1]
-
 	switch command {
 	case "send":
 		handleSend(os.Args[2:])
@@ -75,7 +63,19 @@ func main() {
 	case "profile":
 		handleProfile(os.Args[2:])
 	case "profiles", "profile-list":
-		handleListProfiles(os.Args[2:])
+		handleListProfiles()
+	case "inbox":
+		handleInbox(os.Args[2:])
+	case "sent":
+		handleSent(os.Args[2:])
+	case "list":
+		handleList(os.Args[2:])
+	case "read":
+		handleRead(os.Args[2:])
+	case "delete":
+		handleDelete(os.Args[2:])
+	case "login":
+		handleLogin(os.Args[2:])
 	case "help", "--help", "-h":
 		fmt.Println(getHelp())
 	default:
@@ -85,125 +85,268 @@ func main() {
 	}
 }
 
+// ============ PROFILE COMMANDS ============
+
 func handleProfile(args []string) {
 	if len(args) < 1 {
 		fmt.Println("Usage: smtp-cli profile <add|remove> [flags]")
 		os.Exit(1)
 	}
-
 	action := args[0]
-
 	switch action {
 	case "add":
 		handleAddProfile(args[1:])
 	case "remove", "delete":
 		handleRemoveProfile(args[1:])
 	default:
-		fmt.Printf("Unknown profile action: %s\n", action)
-		os.Exit(1)
+		fmt.Printf("Unknown action: %s\n", action)
 	}
 }
 
 func handleAddProfile(args []string) {
-	addCmd := flag.NewFlagSet("profile add", flag.ExitOnError)
-	name := addCmd.String("name", "", "Profile name (required)")
-	host := addCmd.String("host", "smtp.maleon.run", "SMTP server host")
-	port := addCmd.Int("port", 587, "SMTP server port")
-	user := addCmd.String("user", "", "SMTP username")
-	pass := addCmd.String("pass", "", "SMTP password")
-	from := addCmd.String("from", "", "From address")
-	tls := addCmd.Bool("tls", true, "Use TLS")
-
-	addCmd.Parse(args)
+	cmd := flag.NewFlagSet("profile add", flag.ExitOnError)
+	name := cmd.String("name", "", "Profile name (required)")
+	host := cmd.String("host", "smtp.maleon.run", "SMTP server host")
+	port := cmd.Int("port", 587, "SMTP server port")
+	user := cmd.String("user", "", "SMTP username")
+	pass := cmd.String("pass", "", "SMTP password")
+	from := cmd.String("from", "", "From address")
+	api := cmd.String("api", "http://localhost:3002", "Mail Manager API URL")
+	cmd.Parse(args)
 
 	if *name == "" {
 		fmt.Println("Error: --name is required")
-		addCmd.Usage()
 		os.Exit(1)
 	}
 
 	profiles := loadProfiles()
-	
 	fromAddr := *from
 	if fromAddr == "" {
 		fromAddr = *user + "@maleon.run"
 	}
 
 	profiles[*name] = Profile{
-		Name: *name,
-		Host: *host,
-		Port: *port,
-		User: *user,
-		Pass: *pass,
-		From: fromAddr,
-		TLS:  *tls,
+		Name:   *name,
+		Host:   *host,
+		Port:   *port,
+		User:   *user,
+		Pass:   *pass,
+		From:   fromAddr,
+		TLS:    true,
+		APIURL: *api,
 	}
-
-	if err := saveProfiles(profiles); err != nil {
-		fmt.Printf("Error saving profile: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Profile '%s' saved successfully!\n", *name)
+	saveProfiles(profiles)
+	fmt.Printf("Profile '%s' saved!\n", *name)
 }
 
 func handleRemoveProfile(args []string) {
-	removeCmd := flag.NewFlagSet("profile remove", flag.ExitOnError)
-	name := removeCmd.String("name", "", "Profile name to remove")
-
-	removeCmd.Parse(args)
+	cmd := flag.NewFlagSet("profile remove", flag.ExitOnError)
+	name := cmd.String("name", "", "Profile name")
+	cmd.Parse(args)
 
 	if *name == "" {
-		fmt.Println("Error: --name is required")
-		removeCmd.Usage()
+		fmt.Println("Error: --name required")
 		os.Exit(1)
 	}
 
 	profiles := loadProfiles()
-	
-	if _, ok := profiles[*name]; !ok {
-		fmt.Printf("Profile '%s' not found\n", *name)
-		os.Exit(1)
-	}
-
 	delete(profiles, *name)
-
-	if err := saveProfiles(profiles); err != nil {
-		fmt.Printf("Error saving profiles: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Profile '%s' removed successfully!\n", *name)
+	saveProfiles(profiles)
+	fmt.Printf("Profile '%s' removed!\n", *name)
 }
 
-func handleListProfiles(_ []string) {
+func handleListProfiles() {
 	profiles := loadProfiles()
-	
 	if len(profiles) == 0 {
-		fmt.Println("No profiles found. Use 'smtp-cli profile add --name myprofile' to create one.")
+		fmt.Println("No profiles. Use: smtp-cli profile add --name myprofile")
 		return
 	}
-
 	fmt.Println("Saved profiles:")
-	fmt.Println("--------------")
+	fmt.Println("-------------")
 	for name, p := range profiles {
 		fmt.Printf("  %s -> %s:%d (%s)\n", name, p.Host, p.Port, p.From)
 	}
 }
 
+// ============ MAIL COMMANDS ============
+
+func getAPIURL(profile string) string {
+	profiles := loadProfiles()
+	if p, ok := profiles[profile]; ok {
+		return p.APIURL
+	}
+	return "http://localhost:3002"
+}
+
+func makeAuthHeader(profile string) string {
+	profiles := loadProfiles()
+	if p, ok := profiles[profile]; ok {
+		// Try to get token from cache or login
+		tokenFile := getConfigDir() + "/" + profile + ".token"
+		if data, err := os.ReadFile(tokenFile); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+	}
+	return ""
+}
+
+func handleLogin(args []string) {
+	cmd := flag.NewFlagSet("login", flag.ExitOnError)
+	profile := cmd.String("profile", "default", "Profile name")
+	email := cmd.String("email", "", "Email")
+	password := cmd.String("pass", "", "Password")
+	cmd.Parse(args)
+
+	if *email == "" || *password == "" {
+		fmt.Println("Usage: smtp-cli login --profile default --email user@domain --pass password")
+		os.Exit(1)
+	}
+
+	apiURL := getAPIURL(*profile)
+	
+	// Login to API
+	resp, err := http.Post(apiURL+"/api/auth/login", "application/json", 
+		strings.NewReader(fmt.Sprintf(`{"email":"%s","password":"%s"}`, *email, *password)))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body.Body)
+	if resp.StatusCode != 200 {
+		fmt.Printf("Login failed: %s\n", string(body))
+		os.Exit(1)
+	}
+
+	var result map[string]interface{}
+	json.Unmarshal(body, &result)
+	
+	token := result["token"].(string)
+	
+	// Save token
+	os.MkdirAll(getConfigDir(), 0700)
+	os.WriteFile(getConfigDir()+"/"+*profile+".token", []byte(token), 0600)
+	
+	fmt.Println("Logged in successfully!")
+}
+
+func handleInbox(args []string) {
+	cmd := flag.NewFlagSet("inbox", flag.ExitOnError)
+	profile := cmd.String("profile", "default", "Profile name")
+	cmd.Parse(args)
+
+	apiURL := getAPIURL(*profile)
+	token := makeAuthHeader(*profile)
+
+	if token == "" {
+		fmt.Println("Not logged in. Run: smtp-cli login --profile default --email user@domain --pass password")
+		os.Exit(1)
+	}
+
+	req, _ := http.NewRequest("GET", apiURL+"/api/emails?folder=inbox", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	
+	body, _ := io.ReadAll(resp.Body.Body)
+	fmt.Println(string(body))
+}
+
+func handleSent(args []string) {
+	cmd := flag.NewFlagSet("sent", flag.ExitOnError)
+	profile := cmd.String("profile", "default", "Profile name")
+	cmd.Parse(args)
+
+	apiURL := getAPIURL(*profile)
+	token := makeAuthHeader(*profile)
+
+	if token == "" {
+		fmt.Println("Not logged in. Run: smtp-cli login --profile default --email user@domain --pass password")
+		os.Exit(1)
+	}
+
+	req, _ := http.NewRequest("GET", apiURL+"/api/emails?folder=sent", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	
+	body, _ := io.ReadAll(resp.Body.Body)
+	fmt.Println(string(body))
+}
+
+func handleList(args []string) {
+	// Alias for inbox
+	handleInbox(args)
+}
+
+func handleRead(args []string) {
+	cmd := flag.NewFlagSet("read", flag.ExitOnError)
+	profile := cmd.String("profile", "default", "Profile name")
+	id := cmd.Int("id", 0, "Email ID")
+	cmd.Parse(args)
+
+	if *id == 0 {
+		fmt.Println("Usage: smtp-cli read --id 123")
+		os.Exit(1)
+	}
+
+	apiURL := getAPIURL(*profile)
+	token := makeAuthHeader(*profile)
+
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/emails/%d", apiURL, *id), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	
+	body, _ := io.ReadAll(resp.Body.Body)
+	fmt.Println(string(body))
+}
+
+func handleDelete(args []string) {
+	cmd := flag.NewFlagSet("delete", flag.ExitOnError)
+	profile := cmd.String("profile", "default", "Profile name")
+	id := cmd.Int("id", 0, "Email ID")
+	cmd.Parse(args)
+
+	if *id == 0 {
+		fmt.Println("Usage: smtp-cli delete --id 123")
+		os.Exit(1)
+	}
+
+	apiURL := getAPIURL(*profile)
+	token := makeAuthHeader(*profile)
+
+	req, _ := http.NewRequest("DELETE", fmt.Sprintf("%s/api/emails/%d", apiURL, *id), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	
+	if resp.StatusCode == 200 {
+		fmt.Println("Email deleted!")
+	} else {
+		fmt.Printf("Error: %d\n", resp.StatusCode)
+	}
+}
+
+// ============ SEND & TEST ============
+
 func handleSend(args []string) {
 	sendCmd := flag.NewFlagSet("send", flag.ExitOnError)
-
-	host := sendCmd.String("host", "", "SMTP server host")
-	port := sendCmd.Int("port", 0, "SMTP server port")
-	user := sendCmd.String("user", "", "SMTP username")
-	pass := sendCmd.String("pass", "", "SMTP password")
+	host := sendCmd.String("host", "", "SMTP server")
+	port := sendCmd.Int("port", 0, "SMTP port")
+	user := sendCmd.String("user", "", "SMTP user")
+	pass := sendCmd.String("pass", "", "SMTP pass")
 	from := sendCmd.String("from", "", "From address")
 	to := sendCmd.String("to", "", "To address")
-	subject := sendCmd.String("subject", "", "Email subject")
-	body := sendCmd.String("body", "", "Email body (plain text)")
-	html := sendCmd.String("html", "", "Email body (HTML)")
-	profile := sendCmd.String("profile", "", "Use saved profile")
+	subject := sendCmd.String("subject", "", "Subject")
+	body := sendCmd.String("body", "", "Body")
+	html := sendCmd.String("html", "", "HTML body")
+	profile := sendCmd.String("profile", "", "Use profile")
 
 	sendCmd.Parse(args)
 
@@ -212,213 +355,116 @@ func handleSend(args []string) {
 
 	if *profile != "" {
 		profiles := loadProfiles()
-		p, ok := profiles[*profile]
-		if !ok {
-			fmt.Printf("Profile '%s' not found\n", *profile)
-			os.Exit(1)
-		}
-		
-		config = &smtp.Config{
-			Host:     p.Host,
-			Port:     p.Port,
-			Username: p.User,
-			Password: p.Pass,
-		}
-		fromAddr = p.From
-		
-		if *host != "" {
-			config.Host = *host
-		}
-		if *port != 0 {
-			config.Port = *port
-		}
-		if *user != "" {
-			config.Username = *user
-		}
-		if *pass != "" {
-			config.Password = *pass
-		}
-		if *from != "" {
-			fromAddr = *from
+		if p, ok := profiles[*profile]; ok {
+			config = &smtp.Config{Host: p.Host, Port: p.Port, Username: p.User, Password: p.Pass}
+			fromAddr = p.From
+			if *host != "" { config.Host = *host }
+			if *port != 0 { config.Port = *port }
+			if *user != "" { config.Username = *user }
+			if *pass != "" { config.Password = *pass }
+			if *from != "" { fromAddr = *from }
 		}
 	} else {
 		hostVal := *host
-		if hostVal == "" {
-			hostVal = "smtp.maleon.run"
-		}
+		if hostVal == "" { hostVal = "smtp.maleon.run" }
 		portVal := *port
-		if portVal == 0 {
-			portVal = 587
-		}
-		
-		config = &smtp.Config{
-			Host:     hostVal,
-			Port:     portVal,
-			Username: *user,
-			Password: *pass,
-		}
+		if portVal == 0 { portVal = 587 }
+		config = &smtp.Config{Host: hostVal, Port: portVal, Username: *user, Password: *pass}
 		fromAddr = *from
-		if fromAddr == "" {
-			fromAddr = *user + "@maleon.run"
-		}
+		if fromAddr == "" { fromAddr = *user + "@maleon.run" }
 	}
 
 	if *to == "" {
-		fmt.Println("Error: --to is required")
-		sendCmd.Usage()
+		fmt.Println("Error: --to required")
 		os.Exit(1)
 	}
 
-	e := &email.Email{
-		From:    fromAddr,
-		To:      *to,
-		Subject: *subject,
-		Body:    *body,
-		HTML:    *html,
-	}
+	e := &email.Email{From: fromAddr, To: *to, Subject: *subject, Body: *body, HTML: *html}
 
-	var err error
 	if config.Username != "" && config.Password != "" {
-		err = config.SendWithAuth(e.From, e.To, e.BuildMessage())
+		config.SendWithAuth(e.From, e.To, e.BuildMessage())
 	} else {
-		err = config.Send(e.To, e.BuildMessage())
+		config.Send(e.To, e.BuildMessage())
 	}
-
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Println("Email sent successfully!")
+	fmt.Println("Email sent!")
 }
 
 func handleTest(args []string) {
 	testCmd := flag.NewFlagSet("test", flag.ExitOnError)
-
-	host := testCmd.String("host", "", "SMTP server host")
-	port := testCmd.Int("port", 0, "SMTP server port")
-	user := testCmd.String("user", "", "SMTP username")
-	pass := testCmd.String("pass", "", "SMTP password")
-	profile := testCmd.String("profile", "", "Use saved profile")
-
+	host := testCmd.String("host", "", "SMTP server")
+	port := testCmd.Int("port", 0, "SMTP port")
+	user := testCmd.String("user", "", "SMTP user")
+	pass := testCmd.String("pass", "", "SMTP pass")
+	profile := testCmd.String("profile", "", "Profile")
 	testCmd.Parse(args)
 
 	var config *smtp.Config
 
 	if *profile != "" {
 		profiles := loadProfiles()
-		p, ok := profiles[*profile]
-		if !ok {
-			fmt.Printf("Profile '%s' not found\n", *profile)
-			os.Exit(1)
-		}
-		
-		config = &smtp.Config{
-			Host:     p.Host,
-			Port:     p.Port,
-			Username: p.User,
-			Password: p.Pass,
-		}
-		
-		if *host != "" {
-			config.Host = *host
-		}
-		if *port != 0 {
-			config.Port = *port
-		}
-		if *user != "" {
-			config.Username = *user
-		}
-		if *pass != "" {
-			config.Password = *pass
+		if p, ok := profiles[*profile]; ok {
+			config = &smtp.Config{Host: p.Host, Port: p.Port, Username: p.User, Password: p.Pass}
+			if *host != "" { config.Host = *host }
+			if *port != 0 { config.Port = *port }
+			if *user != "" { config.Username = *user }
+			if *pass != "" { config.Password = *pass }
 		}
 	} else {
 		hostVal := *host
-		if hostVal == "" {
-			hostVal = "smtp.maleon.run"
-		}
+		if hostVal == "" { hostVal = "smtp.maleon.run" }
 		portVal := *port
-		if portVal == 0 {
-			portVal = 587
-		}
-		
-		config = &smtp.Config{
-			Host:     hostVal,
-			Port:     portVal,
-			Username: *user,
-			Password: *pass,
-		}
+		if portVal == 0 { portVal = 587 }
+		config = &smtp.Config{Host: hostVal, Port: portVal, Username: *user, Password: *pass}
 	}
 
-	err := config.Validate()
-	if err != nil {
-		fmt.Printf("Connection test failed: %v\n", err)
+	if err := config.Validate(); err != nil {
+		fmt.Printf("Connection failed: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Println("Connection successful!")
 }
 
 func getHelp() string {
-	return `SMTP CLI - Simple SMTP Email Client with Profile Support
+	return `SMTP CLI - Email Client for Terminal
 
 Usage:
-  smtp-cli send [flags]                Send an email
-  smtp-cli test [flags]                Test SMTP connection
-  smtp-cli profile add [flags]         Add a new profile
-  smtp-cli profile remove [flags]       Remove a profile
-  smtp-cli profiles                    List all saved profiles
-  smtp-cli help                        Show this help
-
-Commands:
-  send          Send an email message
-  test          Test SMTP server connection
-  profile       Manage email profiles (add/remove)
-  profiles      List all saved profiles
-  help          Show help information
+  smtp-cli send [flags]              Send email
+  smtp-cli test [flags]              Test SMTP connection
+  smtp-cli login [flags]             Login to mail server
+  smtp-cli inbox                     List inbox emails
+  smtp-cli sent                      List sent emails
+  smtp-cli read --id <n>             Read email by ID
+  smtp-cli delete --id <n>           Delete email
+  smtp-cli profile add [flags]       Add profile
+  smtp-cli profile remove --name <n> Remove profile
+  smtp-cli profiles                  List profiles
+  smtp-cli help                      Show this help
 
 Examples:
-  # Add a profile
-  smtp-cli profile add --name work --host smtp.maleon.run --user myuser --pass mypass
+  # Add profile
+  smtp-cli profile add --name trabajo --user micorreo --pass pass
 
-  # Send using profile
-  smtp-cli send -profile work -to user@example.com -subject "Hello" -body "Message"
+  # Login with profile
+  smtp-cli login --profile trabajo --email micorreo@maleon.run --pass pass
 
-  # Send without profile (direct)
-  smtp-cli send -to user@example.com -subject "Hello" -body "Message"
+  # Check inbox
+  smtp-cli inbox --profile trabajo
 
-  # Test connection with profile
-  smtp-cli test -profile work
+  # Check sent
+  smtp-cli sent --profile trabajo
 
-  # List profiles
+  # Read email
+  smtp-cli read --id 1 --profile trabajo
+
+  # Send email
+  smtp-cli send -profile trabajo -to dest@email.com -subject "Hi" -body "Hello"
+
+  # Test connection
+  smtp-cli test -profile trabajo
+
+Profiles:
+  smtp-cli profile add --name <name> --user <user> --pass <pass>
+  smtp-cli profile remove --name <name>
   smtp-cli profiles
-
-  # Remove profile
-  smtp-cli profile remove --name work
-
-Global Flags:
-  --profile string    Use saved profile (overrides other flags if provided)
-
-Send Flags:
-  --host string       SMTP server hostname
-  --port int          SMTP server port
-  --user string       SMTP username
-  --pass string       SMTP password
-  --from string       From address
-  --to string         To address (required)
-  --subject string    Email subject
-  --body string       Plain text body
-  --html string       Email body (HTML)
-
-Profile Add Flags:
-  --name string       Profile name (required)
-  --host string       SMTP server hostname
-  --port int          SMTP server port
-  --user string       SMTP username
-  --pass string       SMTP password
-  --from string       From address
-  --tls               Use TLS (default true)
-
-Profile Remove Flags:
-  --name string       Profile name to remove (required)
 `
 }
