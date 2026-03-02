@@ -347,6 +347,8 @@ func handleSend(args []string) {
 	body := sendCmd.String("body", "", "Body")
 	html := sendCmd.String("html", "", "HTML body")
 	profile := sendCmd.String("profile", "", "Use profile")
+	useTLS := sendCmd.Bool("tls", false, "Use implicit TLS (port 465)")
+	useSTARTTLS := sendCmd.Bool("starttls", false, "Force STARTTLS upgrade")
 
 	sendCmd.Parse(args)
 
@@ -356,20 +358,22 @@ func handleSend(args []string) {
 	if *profile != "" {
 		profiles := loadProfiles()
 		if p, ok := profiles[*profile]; ok {
-			config = &smtp.Config{Host: p.Host, Port: p.Port, Username: p.User, Password: p.Pass}
+			config = &smtp.Config{Host: p.Host, Port: p.Port, Username: p.User, Password: p.Pass, TLS: p.TLS, STARTTLS: !p.TLS}
 			fromAddr = p.From
 			if *host != "" { config.Host = *host }
 			if *port != 0 { config.Port = *port }
 			if *user != "" { config.Username = *user }
 			if *pass != "" { config.Password = *pass }
 			if *from != "" { fromAddr = *from }
+			if *useTLS { config.TLS = true; config.STARTTLS = false }
+			if *useSTARTTLS { config.STARTTLS = true; config.TLS = false }
 		}
 	} else {
 		hostVal := *host
 		if hostVal == "" { hostVal = "smtp.maleon.run" }
 		portVal := *port
 		if portVal == 0 { portVal = 587 }
-		config = &smtp.Config{Host: hostVal, Port: portVal, Username: *user, Password: *pass}
+		config = &smtp.Config{Host: hostVal, Port: portVal, Username: *user, Password: *pass, TLS: *useTLS, STARTTLS: *useSTARTTLS}
 		fromAddr = *from
 		if fromAddr == "" { fromAddr = *user + "@maleon.run" }
 	}
@@ -381,12 +385,29 @@ func handleSend(args []string) {
 
 	e := &email.Email{From: fromAddr, To: *to, Subject: *subject, Body: *body, HTML: *html}
 
+	var err error
 	if config.Username != "" && config.Password != "" {
-		config.SendWithAuth(e.From, e.To, e.BuildMessage())
+		err = config.SendWithAuth(e.From, e.To, e.BuildMessage())
 	} else {
-		config.Send(e.To, e.BuildMessage())
+		err = config.Send(e.To, e.BuildMessage())
 	}
-	fmt.Println("Email sent!")
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FAILED: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\nConnection details:\n")
+		fmt.Fprintf(os.Stderr, "  Host: %s\n", config.Host)
+		fmt.Fprintf(os.Stderr, "  Port: %d\n", config.Port)
+		fmt.Fprintf(os.Stderr, "  User: %s\n", config.Username)
+		fmt.Fprintf(os.Stderr, "  From: %s\n", e.From)
+		fmt.Fprintf(os.Stderr, "  To:   %s\n", e.To)
+		fmt.Fprintf(os.Stderr, "  TLS:  %v  STARTTLS: %v\n", config.TLS, config.STARTTLS)
+		os.Exit(1)
+	}
+
+	fmt.Println("Email sent successfully.")
+	fmt.Printf("  From: %s\n", e.From)
+	fmt.Printf("  To:   %s\n", e.To)
+	fmt.Printf("  Subject: %s\n", e.Subject)
 }
 
 func handleTest(args []string) {
@@ -396,6 +417,8 @@ func handleTest(args []string) {
 	user := testCmd.String("user", "", "SMTP user")
 	pass := testCmd.String("pass", "", "SMTP pass")
 	profile := testCmd.String("profile", "", "Profile")
+	useTLS := testCmd.Bool("tls", false, "Use implicit TLS (port 465)")
+	useSTARTTLS := testCmd.Bool("starttls", false, "Force STARTTLS upgrade")
 	testCmd.Parse(args)
 
 	var config *smtp.Config
@@ -403,18 +426,20 @@ func handleTest(args []string) {
 	if *profile != "" {
 		profiles := loadProfiles()
 		if p, ok := profiles[*profile]; ok {
-			config = &smtp.Config{Host: p.Host, Port: p.Port, Username: p.User, Password: p.Pass}
+			config = &smtp.Config{Host: p.Host, Port: p.Port, Username: p.User, Password: p.Pass, TLS: p.TLS, STARTTLS: !p.TLS}
 			if *host != "" { config.Host = *host }
 			if *port != 0 { config.Port = *port }
 			if *user != "" { config.Username = *user }
 			if *pass != "" { config.Password = *pass }
+			if *useTLS { config.TLS = true; config.STARTTLS = false }
+			if *useSTARTTLS { config.STARTTLS = true; config.TLS = false }
 		}
 	} else {
 		hostVal := *host
 		if hostVal == "" { hostVal = "smtp.maleon.run" }
 		portVal := *port
 		if portVal == 0 { portVal = 587 }
-		config = &smtp.Config{Host: hostVal, Port: portVal, Username: *user, Password: *pass}
+		config = &smtp.Config{Host: hostVal, Port: portVal, Username: *user, Password: *pass, TLS: *useTLS, STARTTLS: *useSTARTTLS}
 	}
 
 	if err := config.Validate(); err != nil {

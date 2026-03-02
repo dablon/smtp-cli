@@ -13,6 +13,8 @@ type Config struct {
 	Port     int
 	Username string
 	Password string
+	TLS      bool // Force implicit TLS (port 465 style)
+	STARTTLS bool // Force STARTTLS upgrade
 }
 
 // Validate checks if the configuration is valid
@@ -26,96 +28,56 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Send sends an email via SMTP
+// Send sends an email via SMTP without authentication
 func (c *Config) Send(to, msg string) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
 
 	addr := fmt.Sprintf("%s:%d", c.Host, c.Port)
+	tlsConfig := &tls.Config{ServerName: c.Host, InsecureSkipVerify: true}
 
-	// Skip TLS for ports that don't support it (25, 80, 2525)
-	skipTLS := c.Port == 25 || c.Port == 80 || c.Port == 2525
-
-	if skipTLS {
-		// Direct send without TLS using plain connection
-		conn, err := net.Dial("tcp", addr)
+	// Implicit TLS (port 465 style): connect over TLS directly
+	if c.TLS {
+		tlsConn, err := tls.Dial("tcp", addr, tlsConfig)
 		if err != nil {
-			return fmt.Errorf("failed to connect: %w", err)
+			return fmt.Errorf("TLS connection failed: %w", err)
 		}
-		defer conn.Close()
+		defer tlsConn.Close()
 
-		c, err := smtp.NewClient(conn, c.Host)
+		client, err := smtp.NewClient(tlsConn, c.Host)
 		if err != nil {
 			return fmt.Errorf("failed to create SMTP client: %w", err)
 		}
-		defer c.Quit()
+		defer client.Quit()
 
-		// Send from noreply@maleon.run
-		if err := c.Mail("noreply@maleon.run"); err != nil {
-			return fmt.Errorf("failed to set From: %w", err)
-		}
-
-		if err := c.Rcpt(to); err != nil {
-			return fmt.Errorf("failed to set To: %w", err)
-		}
-
-		w, err := c.Data()
-		if err != nil {
-			return fmt.Errorf("failed to get data writer: %w", err)
-		}
-		_, err = w.Write([]byte(msg))
-		if err != nil {
-			return fmt.Errorf("failed to write email: %w", err)
-		}
-		w.Close()
-
-		return nil
+		return sendMessage(client, "noreply@maleon.run", to, msg)
 	}
 
-	// For TLS ports (587, 465, etc.)
-	auth := smtp.PlainAuth("", c.Username, c.Password, c.Host)
-
-	conn, err := smtp.Dial(addr)
+	// Plain or STARTTLS connection
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer conn.Close()
 
-	// Upgrade to TLS if STARTTLS is available
-	if ok, _ := conn.Extension("STARTTLS"); ok {
-		tlsConfig := &tls.Config{
-			ServerName:         c.Host,
-			InsecureSkipVerify: true,
-		}
-		if err := conn.StartTLS(tlsConfig); err != nil {
-			return fmt.Errorf("failed to start TLS: %w", err)
-		}
-	}
-
-	// Authenticate
-	if err := conn.Auth(auth); err != nil {
-		return fmt.Errorf("authentication failed: %w", err)
-	}
-
-	if err := conn.Mail("noreply@maleon.run"); err != nil {
-		return fmt.Errorf("failed to set From: %w", err)
-	}
-	if err := conn.Rcpt(to); err != nil {
-		return fmt.Errorf("failed to set To: %w", err)
-	}
-
-	w, err := conn.Data()
+	client, err := smtp.NewClient(conn, c.Host)
 	if err != nil {
-		return fmt.Errorf("failed to get data writer: %w", err)
+		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
-	_, err = w.Write([]byte(msg))
-	if err != nil {
-		return fmt.Errorf("failed to write email: %w", err)
-	}
-	w.Close()
+	defer client.Quit()
 
-	return nil
+	// STARTTLS upgrade
+	if c.STARTTLS {
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return fmt.Errorf("STARTTLS failed: %w", err)
+		}
+	} else if ok, _ := client.Extension("STARTTLS"); ok {
+		// Auto-upgrade if server supports it
+		client.StartTLS(tlsConfig)
+	}
+
+	return sendMessage(client, "noreply@maleon.run", to, msg)
 }
 
 // SendWithAuth sends an email via SMTP with authentication
@@ -126,45 +88,70 @@ func (c *Config) SendWithAuth(from, to, msg string) error {
 
 	addr := fmt.Sprintf("%s:%d", c.Host, c.Port)
 	auth := smtp.PlainAuth("", c.Username, c.Password, c.Host)
+	tlsConfig := &tls.Config{ServerName: c.Host, InsecureSkipVerify: true}
 
-	conn, err := smtp.Dial(addr)
+	// Implicit TLS (port 465 style): connect over TLS directly
+	if c.TLS {
+		tlsConn, err := tls.Dial("tcp", addr, tlsConfig)
+		if err != nil {
+			return fmt.Errorf("TLS connection failed: %w", err)
+		}
+		defer tlsConn.Close()
+
+		client, err := smtp.NewClient(tlsConn, c.Host)
+		if err != nil {
+			return fmt.Errorf("failed to create SMTP client: %w", err)
+		}
+		defer client.Quit()
+
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("authentication failed: %w", err)
+		}
+		return sendMessage(client, from, to, msg)
+	}
+
+	// Plain or STARTTLS connection
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer conn.Close()
 
-	// Upgrade to TLS if STARTTLS is available
-	if ok, _ := conn.Extension("STARTTLS"); ok {
-		tlsConfig := &tls.Config{
-			ServerName:         c.Host,
-			InsecureSkipVerify: true,
+	client, err := smtp.NewClient(conn, c.Host)
+	if err != nil {
+		return fmt.Errorf("failed to create SMTP client: %w", err)
+	}
+	defer client.Quit()
+
+	// STARTTLS upgrade
+	if c.STARTTLS {
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return fmt.Errorf("STARTTLS failed: %w", err)
 		}
-		if err := conn.StartTLS(tlsConfig); err != nil {
-			return fmt.Errorf("failed to start TLS: %w", err)
-		}
+	} else if ok, _ := client.Extension("STARTTLS"); ok {
+		client.StartTLS(tlsConfig)
 	}
 
-	// Authenticate
-	if err := conn.Auth(auth); err != nil {
+	if err := client.Auth(auth); err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
+	return sendMessage(client, from, to, msg)
+}
 
-	if err := conn.Mail(from); err != nil {
+// sendMessage sends the email envelope and body through an SMTP client
+func sendMessage(client *smtp.Client, from, to, msg string) error {
+	if err := client.Mail(from); err != nil {
 		return fmt.Errorf("failed to set From: %w", err)
 	}
-	if err := conn.Rcpt(to); err != nil {
+	if err := client.Rcpt(to); err != nil {
 		return fmt.Errorf("failed to set To: %w", err)
 	}
-
-	w, err := conn.Data()
+	w, err := client.Data()
 	if err != nil {
 		return fmt.Errorf("failed to get data writer: %w", err)
 	}
-	_, err = w.Write([]byte(msg))
-	if err != nil {
+	if _, err = w.Write([]byte(msg)); err != nil {
 		return fmt.Errorf("failed to write email: %w", err)
 	}
-	w.Close()
-
-	return nil
+	return w.Close()
 }
