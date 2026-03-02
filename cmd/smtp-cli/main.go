@@ -180,7 +180,7 @@ func getAPIURL(profile string) string {
 
 func makeAuthHeader(profile string) string {
 	profiles := loadProfiles()
-	if p, ok := profiles[profile]; ok {
+	if _, ok := profiles[profile]; ok {
 		// Try to get token from cache or login
 		tokenFile := getConfigDir() + "/" + profile + ".token"
 		if data, err := os.ReadFile(tokenFile); err == nil {
@@ -211,9 +211,9 @@ func handleLogin(args []string) {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Body.Close()
+	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body.Body)
+	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
 		fmt.Printf("Login failed: %s\n", string(body))
 		os.Exit(1)
@@ -250,7 +250,7 @@ func handleInbox(args []string) {
 	resp, _ := http.DefaultClient.Do(req)
 	defer resp.Body.Close()
 	
-	body, _ := io.ReadAll(resp.Body.Body)
+	body, _ := io.ReadAll(resp.Body)
 	fmt.Println(string(body))
 }
 
@@ -273,7 +273,7 @@ func handleSent(args []string) {
 	resp, _ := http.DefaultClient.Do(req)
 	defer resp.Body.Close()
 	
-	body, _ := io.ReadAll(resp.Body.Body)
+	body, _ := io.ReadAll(resp.Body)
 	fmt.Println(string(body))
 }
 
@@ -302,7 +302,7 @@ func handleRead(args []string) {
 	resp, _ := http.DefaultClient.Do(req)
 	defer resp.Body.Close()
 	
-	body, _ := io.ReadAll(resp.Body.Body)
+	body, _ := io.ReadAll(resp.Body)
 	fmt.Println(string(body))
 }
 
