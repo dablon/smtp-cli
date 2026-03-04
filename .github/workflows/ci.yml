@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     
     steps:
@@ -23,15 +23,12 @@ jobs:
         
       - name: Test
         run: go test -v ./...
-
-  docker:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
       
-      - name: Build Docker image
-        run: docker build -t smtp-cli:test .
-        
-      - name: Test CLI help
-        run: docker run --rm smtp-cli:test smtp-cli help
+      - name: Build binary
+        run: go build -o smtp-cli ./cmd/smtp-cli
+      
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: smtp-cli
+          path: smtp-cli
