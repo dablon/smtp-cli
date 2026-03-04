@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
 
 jobs:
   build:
@@ -25,48 +24,40 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
       
-      - name: Build for Linux
+      - name: Build for Linux amd64
         env:
           GOOS: linux
           GOARCH: amd64
-        run: |
-          go build -ldflags="-s -w" -o smtp-cli-linux-amd64 ./cmd/smtp-cli
+        run: go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" -o smtp-cli-linux-amd64 ./cmd/smtp-cli
       
-      - name: Build for Linux ARM64
+      - name: Build for Linux arm64
         env:
           GOOS: linux
           GOARCH: arm64
-        run: |
-          go build -ldflags="-s -w" -o smtp-cli-linux-arm64 ./cmd/smtp-cli
+        run: go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" -o smtp-cli-linux-arm64 ./cmd/smtp-cli
       
-      - name: Build for Windows
+      - name: Build for Windows amd64
         env:
           GOOS: windows
           GOARCH: amd64
-        run: |
-          go build -ldflags="-s -w" -o smtp-cli-windows-amd64.exe ./cmd/smtp-cli
+        run: go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" -o smtp-cli-windows-amd64.exe ./cmd/smtp-cli
       
-      - name: Build for macOS
+      - name: Build for macOS amd64
         env:
           GOOS: darwin
           GOARCH: amd64
-        run: |
-          go build -ldflags="-s -w" -o smtp-cli-darwin-amd64 ./cmd/smtp-cli
+        run: go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" -o smtp-cli-darwin-amd64 ./cmd/smtp-cli
       
-      - name: Build for macOS ARM64
+      - name: Build for macOS arm64
         env:
           GOOS: darwin
           GOARCH: arm64
-        run: |
-          go build -ldflags="-s -w" -o smtp-cli-darwin-arm64 ./cmd/smtp-cli
+        run: go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" -o smtp-cli-darwin-arm64 ./cmd/smtp-cli
       
-      - name: List binaries
-        run: ls -la smtp-cli-*
-      
-      - name: Upload Release Assets
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          draft: true
+          draft: false
           files: |
             smtp-cli-linux-amd64
             smtp-cli-linux-arm64
@@ -100,7 +91,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: |
             dablon/smtp-cli:latest
             dablon/smtp-cli:${{ steps.version.outputs.VERSION }}
