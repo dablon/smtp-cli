@@ -18,16 +18,11 @@ jobs:
         with:
           go-version: '1.21'
       
-      - name: Get short commit hash
-        id: hash
-        run: echo "SHA8=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT
-      
-      - name: Version tag
+      - name: Get commit info
+        id: info
         run: |
-          TAG="v1.0.0-${{ steps.hash.outputs.SHA8 }}"
-          echo "VERSION=$TAG" >> $GITHUB_OUTPUT
-          git tag $TAG
-        id: version
+          echo "SHA8=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT
+          echo "DATE=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
       
       - name: Build for Linux amd64
         env:
@@ -62,6 +57,7 @@ jobs:
       - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: release-${{ steps.info.outputs.DATE }}-${{ steps.info.outputs.SHA8 }}
           draft: false
           generate_release_notes: true
           files: |
