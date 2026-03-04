@@ -16,6 +16,7 @@ type Attachment struct {
 
 // Email represents an email message
 type Email struct {
+	Cc      string
 	From       string
 	To         string
 	Subject    string
@@ -64,6 +65,9 @@ func (e *Email) BuildMessage() string {
 	boundary := "----=_Part_" + fmt.Sprintf("%d", len(e.Attachments))
 	
 	msg.WriteString(fmt.Sprintf("From: %s\r\n", e.From))
+	if e.Cc != "" {
+		msg.WriteString(fmt.Sprintf("Cc: %s\r\n", e.Cc))
+	}
 	msg.WriteString(fmt.Sprintf("To: %s\r\n", e.To))
 	if e.Subject != "" {
 		msg.WriteString(fmt.Sprintf("Subject: %s\r\n", e.Subject))
@@ -109,6 +113,9 @@ func (e *Email) BuildMessage() string {
 func (e *Email) buildSimpleMessage() string {
 	var msg strings.Builder
 	msg.WriteString(fmt.Sprintf("From: %s\r\n", e.From))
+	if e.Cc != "" {
+		msg.WriteString(fmt.Sprintf("Cc: %s\r\n", e.Cc))
+	}
 	msg.WriteString(fmt.Sprintf("To: %s\r\n", e.To))
 	
 	if e.Subject != "" {

@@ -346,6 +346,7 @@ func handleSend(args []string) {
 	subject := sendCmd.String("subject", "", "Subject")
 	body := sendCmd.String("body", "", "Body")
 	attach := sendCmd.String("attach", "", "Attachment file")
+	cc := sendCmd.String("cc", "", "CC recipients")
 	html := sendCmd.String("html", "", "HTML body")
 	profile := sendCmd.String("profile", "", "Use profile")
 	useTLS := sendCmd.Bool("tls", false, "Use implicit TLS (port 465)")
@@ -384,7 +385,7 @@ func handleSend(args []string) {
 		os.Exit(1)
 	}
 
-	e := &email.Email{From: fromAddr, To: *to, Subject: *subject, Body: *body, HTML: *html}
+	e := &email.Email{From: fromAddr, To: *to, Subject: *subject, Body: *body, HTML: *html, Cc: *cc}
 	if *attach != "" {
 		e.AddAttachment(*attach)
 	}
