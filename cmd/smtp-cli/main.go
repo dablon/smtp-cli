@@ -345,6 +345,7 @@ func handleSend(args []string) {
 	to := sendCmd.String("to", "", "To address")
 	subject := sendCmd.String("subject", "", "Subject")
 	body := sendCmd.String("body", "", "Body")
+	attach := sendCmd.String("attach", "", "Attachment file")
 	html := sendCmd.String("html", "", "HTML body")
 	profile := sendCmd.String("profile", "", "Use profile")
 	useTLS := sendCmd.Bool("tls", false, "Use implicit TLS (port 465)")
@@ -384,6 +385,9 @@ func handleSend(args []string) {
 	}
 
 	e := &email.Email{From: fromAddr, To: *to, Subject: *subject, Body: *body, HTML: *html}
+	if *attach != "" {
+		e.AddAttachment(*attach)
+	}
 
 	var err error
 	if config.Username != "" && config.Password != "" {
