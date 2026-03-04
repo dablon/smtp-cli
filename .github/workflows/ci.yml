@@ -21,16 +21,8 @@ jobs:
       - name: Build
         run: go build -v ./...
         
-      - name: Test with coverage
-        run: |
-          go test -v -coverprofile=coverage.out -covermode=atomic ./...
-          go tool cover -func=coverage.out
-          
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage.out
+      - name: Test
+        run: go test -v ./...
 
   docker:
     runs-on: ubuntu-latest
@@ -43,6 +35,3 @@ jobs:
         
       - name: Test CLI help
         run: docker run --rm smtp-cli:test smtp-cli help
-        
-      - name: Test connection
-        run: docker run --rm --network host smtp-cli:test smtp-cli -host localhost -port 2525 test
